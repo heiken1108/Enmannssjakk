@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            body {
+                height: 100vh;
+                overflow: hidden;
+            }
+            #idCanvas {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                border: 2px solid black;
+            }
+            h1, h2 {
+                text-align: center;
+            }
+            #buttonsDiv {
+                position: absolute;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                min-width: 350px;
+                min-height: 20px;
+                display: flex;
+                justify-content: space-around;
+                border: 2px dotted black
+            }
+            Button {
+                padding: 14px 16px;
+                cursor: pointer;
+                font-size: 24px;
+                margin: 10px;
+            }
+            #historyDiv {
+                position: absolute;
+                right: 0px;
+                top: 0px;
+                width: 20%;
+                border-left: 5px solid black;
+                height: 100vh;
+                overflow: scroll;
+                padding: 20px;
+            }
+            #historyDiv div {
+                display: block;
+                width: 100%;
+                height: 200px;
+                margin-bottom: 10px;
+            }
+            #historyDiv div:last-child {
+                margin-bottom: 50px;
+
+            }
+            #historyDiv div canvas {
+                display: table;
+                height: 100%;
+                width: 200px;
+                border: 2px solid black;;
+                margin: 0 auto;
+                cursor: pointer;
+            }
+            #idReglerButton {
+                position: absolute;
+                left: 10px;
+                top: 10px;
+            }
+            #reglerDiv {
+                visibility: hidden;
+                position: absolute;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                height: 100%;
+                background-color: lightgray;
+            }
+            #idExitSpan {
+                display: block;
+                margin: 20px;
+                font-size: 24px;
+                cursor: pointer;
+                font-family: Verdana, Geneva, Tahoma, sans-serif;
+                user-select: none;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Enmannsjakk</h1>
+        <h2 id="idGjenståendeBrikkerHeader">Gjenstående brikker:</h2>
+        <canvas id="idCanvas" width="350" height="350"></canvas>
+        <div id="buttonsDiv">
+            <button id="backButton">Tilbake</button>
+            <button id="restartButton">Omstart</button>
+            <button id="forwardButton">Forover</button>
+        </div>
+        <div id="historyDiv">
+            
+        </div>
+        <button id="idReglerButton">Regler</button>
+        <div id="reglerDiv">
+            <span id="idExitSpan">X</span>
+            <h2>Regler:</h2>
+            <ul>
+                <li>Grå felter er brikker</li>
+                <li>Hvite felter er åpne plasser</li>
+                <li>Målet med spillet er å ende opp med én gjenstående brikke, altså ett grått felt</li>
+                <li>Man kan fjerne brikker ved å flytte en brikke over en annen brikke og lande på et åpent felt </li>
+                <li>Man kan kun flytte horisontalt og vertikalt og det åpne feltet må være eksakt to felt unna i retningen man flytter. På feltet mellom brikken man vil flytte og det åpne feltet må det stå en annen brikke</li>
+                <li>For å velge en brikke en trykker man på den. Da blir den grønn. Dersom man vil velge en annen brikke må man først trykke på den aktive (grønne) brikken for å gjøre den inaktiv</li>
+                <li>Når man har valgt en brikke må man trykke på et lovlig åpent felt for å kunne gjennomføre et trekk</li>
+            </ul>
+        </div>
+        <script>
+            var canvas = document.getElementById("idCanvas");
+            var ctx = canvas.getContext("2d");
+            var cellHeight = canvas.height/7;
+            var cellWidth = canvas.width/7;
+
+            var backButton = document.getElementById("backButton");
+            var forwardButton = document.getElementById("forwardButton");
+            var restartButton = document.getElementById("restartButton");
+            var reglerButton = document.getElementById("idReglerButton");
+            var reglerDiv = document.getElementById("reglerDiv");
+            var exitSpan = document.getElementById("idExitSpan");
+
+            backButton.addEventListener("click", handleBack);
+            document.addEventListener("keydown", function(event) {
+                if (event.keyCode == 37) {
+                    handleBack();
+                }
+            } );
+            forwardButton.addEventListener("click", handleForward);
+            document.addEventListener("keydown", function(event) {
+                if (event.keyCode == 39) {
+                    handleForward();
+                }
+            } );
+            restartButton.addEventListener("click", handleRestart);
+            reglerButton.addEventListener("click", openRegler);
+            exitSpan.addEventListener("click", closeRegler);
+
+            var historyDiv = document.getElementById("historyDiv");
+            var gjenståendeBrikkerHeader = document.getElementById("idGjenståendeBrikkerHeader");
+
+            document.addEventListener("keypress", (event) => {
+                if (event.keyCode == 37) {
+                    console.log("Trykket venstre");
+                }
+            } )
+
+            var gjenståendeBrikker = 0;
+
+            var activeCell = [];
+
+            var board = [
+                [2,2,1,1,1,2,2],
+                [2,2,1,1,1,2,2],
+                [1,1,1,1,1,1,1],
+                [1,1,1,0,1,1,1],
+                [1,1,1,1,1,1,1],
+                [2,2,1,1,1,2,2],
+                [2,2,1,1,1,2,2]
+            ]
+            
+            var boardHistory = [];
+            var currentBoardIndex = -1;
+            copyIntoHistory();
+            
+            function drawBoard() {
+                ctx.clearRect(0,0, canvas.width, canvas.height);
+                for (let i = 0; i < 7; i++) {
+                    for (let j = 0; j < 7; j++) {
+                        if (board[j][i] == 2) {
+                            ctx.fillStyle = "black";
+                        } else if (board[j][i] == 3) {
+                            ctx.fillStyle = "lightgreen";
+                        } else if (board[j][i] == 1) {
+                            ctx.fillStyle = "gray";
+                        } else {
+                            ctx.fillStyle = "white";
+                        }
+                        ctx.fillRect(i*cellWidth,j*cellHeight, (i+1)*cellWidth, (j+1)*cellHeight);
+                        ctx.rect(i*cellWidth,j*cellHeight, (i+1)*cellWidth, (j+1)*cellHeight);
+                        ctx.stroke();
+                        /*if (board[j][i] == 1) {
+                            console.log("Yo", j, i)
+                            ctx.moveTo(((2*i+1)/2)*cellWidth, j*cellHeight+10);
+                            ctx.lineTo(((2*i+1)/2)*cellWidth, (j+1)*cellHeight-10)
+                        }
+                        if (board[j][i] == 1) {
+                            ctx.clearRect(i*cellWidth,j*cellHeight, (i+1)*cellWidth, (j+1)*cellHeight);
+                        }*/
+                    }
+                } 
+                gjenståendeBrikker = calculateBrikkerLeft();
+                gjenståendeBrikkerHeader.innerHTML = "Gjenstående brikker: " + gjenståendeBrikker.toString();
+                populateHistoryDiv();  
+            }
+            
+            
+            function HandleMouseClick(canvas, event) {
+                var rect = canvas.getBoundingClientRect();
+                xPos = event.clientX - rect.left;
+                yPos = event.clientY - rect.top;
+                col = Math.floor(xPos / cellWidth);
+                row = Math.floor(yPos / cellHeight);
+                if (col > 6) {
+                    col = 6
+                }
+                if (row > 6) {
+                    row = 6
+                }
+                console.log(xPos, yPos);
+                console.log(row, col)
+
+                if (activeCell.length == 2) {
+                    if (row == activeCell[0] && col == activeCell[1]) {
+                        activeCell = [];
+                        board[row][col] = 1
+                        console.log("Resetter aktiv celle");
+                    } else if (board[row][col] == 0) {
+                        console.log("Prøver å bevege til tom rute")
+                        if (row - activeCell[0] == 2 && col == activeCell[1] && board[row-1][col] == 1) { //Ned
+                            board[row-2][col] = 0;
+                            board[row-1][col] = 0;
+                            board[row][col] = 1;
+                            activeCell = [];
+                            copyIntoHistory();
+                        } else if (activeCell[0] - row == 2 && col == activeCell[1] && board[row+1][col] == 1) { //Opp
+                            board[row+2][col] = 0;
+                            board[row+1][col] = 0;
+                            board[row][col] = 1;
+                            activeCell = [];
+                            copyIntoHistory();
+                        } else if (row == activeCell[0] && col - activeCell[1] == 2 && board[row][col-1] == 1) { //Høyre
+                            board[row][col-2] = 0;
+                            board[row][col-1] = 0;
+                            board[row][col] = 1;
+                            activeCell = [];
+                            copyIntoHistory();
+                        } else if (row == activeCell[0] && activeCell[1] - col == 2 && board[row][col+1] == 1) { //Venstre
+                            board[row][col+2] = 0;
+                            board[row][col+1] = 0;
+                            board[row][col] = 1;
+                            activeCell = [];
+                            copyIntoHistory();
+                        }
+                        console.log(boardHistory)
+                    } else {
+                        console.log("Ikke lov til å flytte dit");
+                    }
+                } else {
+                    if (board[row][col] == 1) {
+                        activeCell = [row, col];
+                        board[row][col] = 3
+                        console.log("Satt aktive celle");
+                    } else {
+                        console.log("Må trykke på en rute med brikke");
+                    }
+                }
+                console.log(board)
+                drawBoard();
+                
+            }
+
+            canvas.addEventListener("mousedown", function(e) {
+                HandleMouseClick(canvas, e)
+            })
+
+
+            function copyIntoHistory() {
+                newBoard = [
+                    [null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null],
+                    [null, null, null, null, null, null, null],
+                ]
+                for (let i = 0; i < board.length; i++) {
+                    for (let j = 0; j < board[i].length; j++) {
+                        newBoard[i][j] = board[i][j];
+                    }
+                }
+                boardHistory.length = currentBoardIndex+1
+                boardHistory.push(newBoard);
+                currentBoardIndex += 1;
+            }
+
+
+            function handleBack() {
+                if (currentBoardIndex > 0) {
+                    console.log(currentBoardIndex)
+                    currentBoardIndex -= 1;
+                    newBoard = boardHistory[currentBoardIndex];
+                    for (let i = 0; i < newBoard.length; i++) {
+                        for (let j = 0; j < newBoard[i].length; j++) {
+                            board[i][j] = newBoard[i][j];
+                        }
+                    }
+                    drawBoard();
+                }
+            }
+
+            function handleForward() {
+                if (currentBoardIndex < boardHistory.length - 1) {
+                    currentBoardIndex += 1;
+                    newBoard = boardHistory[currentBoardIndex];
+                    for (let i = 0; i < newBoard.length; i++) {
+                        for (let j = 0; j < newBoard[i].length; j++) {
+                            board[i][j] = newBoard[i][j];
+                        }
+                    }
+                    drawBoard();
+                }
+            }
+
+            function handleRestart() {
+                board = [
+                [2,2,1,1,1,2,2],
+                [2,2,1,1,1,2,2],
+                [1,1,1,1,1,1,1],
+                [1,1,1,0,1,1,1],
+                [1,1,1,1,1,1,1],
+                [2,2,1,1,1,2,2],
+                [2,2,1,1,1,2,2]
+                ]
+                boardHistory = [];
+                currentBoardIndex = -1;
+                copyIntoHistory();
+                drawBoard();
+                
+            }
+
+            function populateHistoryDiv() {
+                historyDiv.innerHTML = "";
+                for (let k = 0; k < boardHistory.length; k++) {
+                    const newDiv = document.createElement("div");
+                    const newCanvas = document.createElement("canvas");
+                    var nCtx = newCanvas.getContext("2d");
+
+                    var historyCellHeight = newCanvas.height/7;
+                    var historyCellWidth = newCanvas.width/7;
+
+                    for (let i = 0; i < 7; i++) {
+                    for (let j = 0; j < 7; j++) {
+                        if (boardHistory[k][j][i] == 2) {
+                            nCtx.fillStyle = "black";
+                        } else if (boardHistory[k][j][i] == 3) {
+                            nCtx.fillStyle = "lightgreen";
+                        } else if (boardHistory[k][j][i] == 1) {
+                            nCtx.fillStyle = "gray";
+                        } else {
+                            nCtx.fillStyle = "white";
+                        }
+                        nCtx.fillRect(i*historyCellWidth,j*historyCellHeight, (i+1)*historyCellWidth, (j+1)*historyCellHeight);
+                        nCtx.rect(i*historyCellWidth,j*historyCellHeight, (i+1)*historyCellWidth, (j+1)*historyCellHeight);
+                        nCtx.stroke();
+                        
+                    }
+                } 
+                    if (k == currentBoardIndex) {
+                        newCanvas.style.border = "5px solid lightgreen";
+                    }
+                    newCanvas.addEventListener("click", function() {
+                        currentBoardIndex = k;
+                        newBoard = boardHistory[currentBoardIndex];
+                    for (let i = 0; i < newBoard.length; i++) {
+                        for (let j = 0; j < newBoard[i].length; j++) {
+                            board[i][j] = newBoard[i][j];
+                        }
+                    }
+                        drawBoard();
+                    });
+                    newDiv.appendChild(newCanvas);
+                    historyDiv.appendChild(newDiv);
+                    if (k+1 != boardHistory.length) {
+                        var hr = document.createElement("hr");
+                        hr.style.height = "3px";
+                        hr.style.background = "black";
+                        historyDiv.appendChild(hr);
+                    }
+                    
+                } 
+                historyDiv.scrollTop = historyDiv.scrollHeight;
+            }
+
+            function calculateBrikkerLeft() {
+                var s = 0;
+                for (let i = 0; i < board.length; i++) {
+                    for (let j = 0; j < board[i].length; j++) {
+                        if (board[i][j] == 1 || board[i][j] == 3) {
+                            s += 1
+                        }
+                    }
+                }
+                return s;
+            }
+
+            function changeBoard(event) {
+                console.log(event.current);
+            }
+
+            drawBoard();
+
+            function openRegler() {
+                reglerDiv.style.visibility = "visible";
+            }
+
+            function closeRegler() {
+                reglerDiv.style.visibility = "hidden";
+            }
+
+        </script>
+    </body>
+</html>
